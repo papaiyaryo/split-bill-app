@@ -1,18 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
 import type { Expense, Person, Currency } from "./domain.ts";
 import { PEOPLE_OPTIONS } from "./domain.ts";
+import { getLS, setLS } from "./storage.ts";
 
 export default function App() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [ expenses, setExpenses ] = useState<Expense[]>(() =>
+    getLS<Expense[]>("expenses", [])
+  );
   const [inputP, setInputP] = useState<Person[]>([]);
   const [payerId, setPayerId] = useState<number | "">("");
   const [inputB, setInputB] = useState("");
   const [currency, setCurrency] = useState<Currency>("RON");
   const [inputU, setInputU] = useState("");
   const [count, setCount] = useState<number>(0);
+  const [rate, setRate] = useState<number>(1);
+  
 
   // 入力中の人数（表示用）
   const togglePerson = (person: Person) => {
@@ -22,9 +27,6 @@ export default function App() {
           ? prev.filter((p) => p.id !== person.id) // 既にあれば外す
           : [...prev, person] // 無ければ追加
     );
-  };
-  const addCount = () => {
-    setCount(count + 1);
   };
 
   // 3項目が全て入力済み かつ 金額が正の数 かつ 人数1以上
@@ -52,12 +54,23 @@ export default function App() {
     setExpenses([...expenses, newExpense]);
 
     // 入力欄クリア
+    setCount(count+1)
     setInputP([]);
     setPayerId("");
     setInputB("");
     setCurrency("RON");
     setInputU("");
   };
+
+
+
+  useEffect(() => {
+    setLS("expenses", expenses);
+  }, [expenses]);
+
+  const deleteExpense = (id: number) => { 
+    setExpenses(expenses.filter((exp) => exp.id !== id))
+  }
   return (
     <>
       <div>
@@ -145,30 +158,37 @@ export default function App() {
               <th>参加者</th>
               <th>人数</th>
               <th>金額</th>
+              <th>金額</th>
               <th>用途</th>
               <th>支払者</th>
+              <th>削除</th>
             </tr>
           </thead>
           <tbody>
-            {expenses.map((exp, i) => (
-              <tr key={i}>
-                <td>{exp.participants.map((p) => p.name).join(", ")}</td>
-                <td>{exp.participants.length}</td>
-                <td>
-                  {exp.amount} {exp.currency}
-                </td>
-                <td>{exp.usage}</td>
-                <td>{exp.payer.name}</td>
-              </tr>
-            ))}
-            {expenses.length === 0 && (
-              <tr>
-                <td colSpan={5} style={{ opacity: 0.7 }}>
-                  まだデータがありません
-                </td>
-              </tr>
-            )}
-          </tbody>
+  {expenses.map((exp, i) => (
+    <tr key={i}>
+      <td>{exp.participants.map((p) => p.name).join(", ")}</td>
+      <td>{exp.participants.length}</td>
+      <td>
+        {exp.amount} {exp.currency}
+      </td>
+      <td>{exp.amount * rate}</td>
+      <td>{exp.usage}</td>
+      <td>{exp.payer.name}</td>
+      <td>
+        <button onClick={() => deleteExpense(exp.id)}>削除</button>
+      </td>
+    </tr>
+  ))}
+  {expenses.length === 0 && (
+    <tr>
+      <td colSpan={6} style={{ opacity: 0.7 }}>
+        まだデータがありません
+      </td>
+    </tr>
+  )}
+</tbody>
+
         </table>
       </div>
     </>
