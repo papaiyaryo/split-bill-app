@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
-import type { Expense, Person, Currency } from "./domain.ts";
+import type { Expense, Person, Currency, Rates } from "./domain.ts";
+import {fmtJPY} from "./domain.ts"
 import { PEOPLE_OPTIONS } from "./domain.ts";
 import { getLS, setLS } from "./storage.ts";
+import { convertToJPY, fetchRatesJPY } from "./rate.ts";
 
 export default function App() {
-  const [ expenses, setExpenses ] = useState<Expense[]>(() =>
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
     getLS<Expense[]>("expenses", [])
   );
   const [inputP, setInputP] = useState<Person[]>([]);
@@ -16,8 +18,7 @@ export default function App() {
   const [currency, setCurrency] = useState<Currency>("RON");
   const [inputU, setInputU] = useState("");
   const [count, setCount] = useState<number>(0);
-  const [rate, setRate] = useState<number>(1);
-  
+  const [rates, setRates] = useState<Rates | null>(null);
 
   // 入力中の人数（表示用）
   const togglePerson = (person: Person) => {
@@ -35,6 +36,7 @@ export default function App() {
     inputP.length > 0 &&
     inputU.trim() !== "" &&
     inputB.trim() !== "" &&
+    payerId !== ""&&
     !Number.isNaN(parsedAmount) &&
     parsedAmount > 0;
 
@@ -54,7 +56,7 @@ export default function App() {
     setExpenses([...expenses, newExpense]);
 
     // 入力欄クリア
-    setCount(count+1)
+    setCount(count + 1);
     setInputP([]);
     setPayerId("");
     setInputB("");
@@ -62,15 +64,24 @@ export default function App() {
     setInputU("");
   };
 
-
-
   useEffect(() => {
     setLS("expenses", expenses);
   }, [expenses]);
+  useEffect(() => {
+    let alive = true;
+    fetchRatesJPY()
+      .then((r) => {
+        if (alive) setRates(r);
+      })
+      .catch(console.error);
+    return () => {
+      alive = false;
+    };
+  },[]);
 
-  const deleteExpense = (id: number) => { 
-    setExpenses(expenses.filter((exp) => exp.id !== id))
-  }
+  const deleteExpense = (id: number) => {
+    setExpenses(expenses.filter((exp) => exp.id !== id));
+  };
   return (
     <>
       <div>
@@ -165,31 +176,40 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-  {expenses.map((exp, i) => (
-    <tr key={i}>
-      <td>{exp.participants.map((p) => p.name).join(", ")}</td>
-      <td>{exp.participants.length}</td>
-      <td>
-        {exp.amount} {exp.currency}
-      </td>
-      <td>{exp.amount * rate}</td>
-      <td>{exp.usage}</td>
-      <td>{exp.payer.name}</td>
-      <td>
-        <button onClick={() => deleteExpense(exp.id)}>削除</button>
-      </td>
-    </tr>
-  ))}
-  {expenses.length === 0 && (
-    <tr>
-      <td colSpan={6} style={{ opacity: 0.7 }}>
-        まだデータがありません
-      </td>
-    </tr>
-  )}
-</tbody>
-
+            {expenses.map((exp, i) => (
+              <tr key={i}>
+                <td>{exp.participants.map((p) => p.name).join(", ")}</td>
+                <td>{exp.participants.length}</td>
+                <td>
+                  {exp.amount} {exp.currency}
+                </td>
+                <td>
+                  {rates ? fmtJPY.format(convertToJPY(exp.amount, exp.currency, rates)) : "--"}
+                </td>
+                <td>{exp.usage}</td>
+                <td>{exp.payer.name}</td>
+                <td>
+                  <button onClick={() => deleteExpense(exp.id)}>削除</button>
+                </td>
+              </tr>
+            ))}
+            {expenses.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ opacity: 0.7 }}>
+                  まだデータがありません
+                </td>
+              </tr>
+            )}
+          </tbody>
         </table>
+      </div>
+      <h3>デバック用({rates?.date})</h3>
+      <div>
+        {/* 確認用 */}
+        <p>EUR　{rates?.rates.EUR}</p>
+        <p>USD　{rates?.rates.USD}</p>
+        <p>JPY　{rates?.rates.JPY}</p>
+        <p>RON　{rates?.rates.RON}</p>
       </div>
     </>
   );

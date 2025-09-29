@@ -34,3 +34,13 @@ export const PEOPLE_OPTIONS: Person[] = [
   { id: 6, name: "矢口" },
   { id: 7, name: "山川" },
 ];
+
+// ① フォーマッター（小数0桁）
+export const fmtJPY = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+  minimumFractionDigits: 0,
+});
+
+
