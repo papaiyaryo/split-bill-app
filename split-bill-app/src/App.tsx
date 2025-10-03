@@ -3,10 +3,10 @@ import reactLogo from "./assets/react.svg";
 import viteLogo from "/vite.svg";
 import "./App.css";
 import type { Expense, Person, Currency, Rates } from "./domain.ts";
-import {fmtJPY} from "./domain.ts"
-import { PEOPLE_OPTIONS } from "./domain.ts";
+import {fmtJPY, PEOPLE_OPTIONS, currencyFormatters} from "./domain.ts"
 import { getLS, setLS } from "./storage.ts";
-import { convertToJPY, fetchRatesJPY } from "./rate.ts";
+import { fetchRatesJPY } from "./rate.ts";
+import { computeBalances, computeSettlements, convertToJPY } from "./calculations.ts";
 
 export default function App() {
   const [expenses, setExpenses] = useState<Expense[]>(() =>
@@ -17,7 +17,13 @@ export default function App() {
   const [inputB, setInputB] = useState("");
   const [currency, setCurrency] = useState<Currency>("RON");
   const [inputU, setInputU] = useState("");
-  const [count, setCount] = useState<number>(0);
+  const [nextId, setNextId] = useState<number>(() => {
+    // 既存の支出から最大IDを取得して+1
+    const existingExpenses = getLS<Expense[]>("expenses", []);
+    return existingExpenses.length > 0 
+      ? Math.max(...existingExpenses.map(e => e.id)) + 1 
+      : 1;
+  });
   const [rates, setRates] = useState<Rates | null>(null);
 
   // 入力中の人数（表示用）
@@ -45,7 +51,7 @@ export default function App() {
   const addExpense = () => {
     if (!isValid) return;
     const newExpense: Expense = {
-      id: count,
+      id: nextId,
       participants: inputP,
       payer: ayer as Person,
       amount: parsedAmount,
@@ -56,7 +62,7 @@ export default function App() {
     setExpenses([...expenses, newExpense]);
 
     // 入力欄クリア
-    setCount(count + 1);
+    setNextId(nextId + 1);
     setInputP([]);
     setPayerId("");
     setInputB("");
@@ -80,7 +86,45 @@ export default function App() {
   },[]);
 
   const deleteExpense = (id: number) => {
-    setExpenses(expenses.filter((exp) => exp.id !== id));
+    console.log(`削除対象ID: ${id}`);
+    console.log(`削除前の支出数: ${expenses.length}`);
+    console.log(`削除前の支出ID一覧:`, expenses.map(e => e.id));
+    
+    const filteredExpenses = expenses.filter((exp) => exp.id !== id);
+    
+    console.log(`削除後の支出数: ${filteredExpenses.length}`);
+    console.log(`削除後の支出ID一覧:`, filteredExpenses.map(e => e.id));
+    
+    setExpenses(filteredExpenses);
+  };
+
+  // 残高計算
+  const balances = computeBalances(PEOPLE_OPTIONS, expenses, rates);
+  const settlements = computeSettlements(balances);
+
+  // デバッグ用：計算結果をコンソールに出力
+  console.log("Expenses:", expenses);
+  console.log("Rates:", rates);
+  console.log("Balances:", balances);
+  
+  // 残高計算の詳細デバッグ
+  if (balances.length > 0) {
+    console.log("=== 残高計算詳細 ===");
+    balances.forEach(b => {
+      console.log(`${b.person.name}: 支払い=${b.paid.toFixed(2)}, 負担=${b.owed.toFixed(2)}, 残高=${b.balance.toFixed(2)}`);
+    });
+    const totalBalance = balances.reduce((sum, b) => sum + b.balance, 0);
+    console.log(`残高合計: ${totalBalance.toFixed(2)} (理論上は0になるはず)`);
+  }
+
+  // 通貨別詳細を表示する関数
+  const renderCurrencyBreakdown = (currencyAmounts: { currency: Currency; amount: number }[]) => {
+    if (currencyAmounts.length === 0) return "なし";
+    
+    return currencyAmounts
+      .filter(ca => ca.amount > 0.01) // 1円/1セント以上のもののみ表示
+      .map(ca => `${currencyFormatters[ca.currency].format(ca.amount)}`)
+      .join(", ");
   };
   return (
     <>
@@ -189,7 +233,23 @@ export default function App() {
                 <td>{exp.usage}</td>
                 <td>{exp.payer.name}</td>
                 <td>
-                  <button onClick={() => deleteExpense(exp.id)}>削除</button>
+                  <button 
+                    onClick={() => {
+                      if (confirm(`「${exp.usage}」を削除しますか？`)) {
+                        deleteExpense(exp.id);
+                      }
+                    }}
+                    style={{ 
+                      backgroundColor: '#ff4444', 
+                      color: 'white', 
+                      border: 'none', 
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    削除
+                  </button>
                 </td>
               </tr>
             ))}
@@ -203,6 +263,83 @@ export default function App() {
           </tbody>
         </table>
       </div>
+      {/* 残高表示セクション */}
+      <h2 style={{ marginTop: 32 }}>残高一覧</h2>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <table border={1} cellPadding={6} style={{ fontSize: "14px" }}>
+          <thead>
+            <tr>
+              <th>名前</th>
+              <th>支払い総額<br/>(JPY換算)</th>
+              <th>支払い詳細<br/>(元通貨)</th>
+              <th>負担総額<br/>(JPY換算)</th>
+              <th>負担詳細<br/>(元通貨)</th>
+              <th>残高</th>
+            </tr>
+          </thead>
+          <tbody>
+            {balances.map((balance, i) => (
+              <tr key={i}>
+                <td style={{ fontWeight: 'bold' }}>{balance.person.name}</td>
+                <td style={{ textAlign: 'right' }}>{fmtJPY.format(balance.paid)}</td>
+                <td style={{ fontSize: "12px", color: "#666" }}>
+                  {renderCurrencyBreakdown(balance.paidByCurrency)}
+                </td>
+                <td style={{ textAlign: 'right' }}>{fmtJPY.format(balance.owed)}</td>
+                <td style={{ fontSize: "12px", color: "#666" }}>
+                  {renderCurrencyBreakdown(balance.owedByCurrency)}
+                </td>
+                <td style={{ 
+                  color: balance.balance > 0 ? 'green' : balance.balance < 0 ? 'red' : 'black',
+                  fontWeight: 'bold',
+                  textAlign: 'right'
+                }}>
+                  {fmtJPY.format(balance.balance)}
+                </td>
+              </tr>
+            ))}
+            {balances.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ opacity: 0.7 }}>
+                  為替レートを取得中...
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 精算結果セクション */}
+      <h2 style={{ marginTop: 32 }}>精算結果</h2>
+      {settlements.length > 0 ? (
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <table border={1} cellPadding={6}>
+            <thead>
+              <tr>
+                <th>支払う人</th>
+                <th>受け取る人</th>
+                <th>金額</th>
+              </tr>
+            </thead>
+            <tbody>
+              {settlements.map((settlement, i) => (
+                <tr key={i}>
+                  <td>{settlement.from.name}</td>
+                  <td>{settlement.to.name}</td>
+                  <td style={{ fontWeight: 'bold', color: 'blue' }}>
+                    {fmtJPY.format(settlement.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p style={{ textAlign: 'center', opacity: 0.7 }}>
+          {balances.length > 0 ? '精算の必要はありません' : 'データがありません'}
+        </p>
+      )}
+
       <h3>デバック用({rates?.date})</h3>
       <div>
         {/* 確認用 */}
@@ -210,6 +347,24 @@ export default function App() {
         <p>USD　{rates?.rates.USD}</p>
         <p>JPY　{rates?.rates.JPY}</p>
         <p>RON　{rates?.rates.RON}</p>
+        <p>支出件数: {expenses.length}</p>
+        <p>次のID: {nextId}</p>
+        <p>残高計算対象: {balances.length}人</p>
+        {expenses.length > 0 && (
+          <div>
+            <p>支出ID一覧: {expenses.map(e => e.id).join(", ")}</p>
+          </div>
+        )}
+        {balances.length > 0 && (
+          <div>
+            <p>残高詳細:</p>
+            {balances.map((b, i) => (
+              <p key={i} style={{ fontSize: "12px", margin: "2px 0" }}>
+                {b.person.name}: 支払い={b.paid.toFixed(2)}, 負担={b.owed.toFixed(2)}, 残高={b.balance.toFixed(2)}
+              </p>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );

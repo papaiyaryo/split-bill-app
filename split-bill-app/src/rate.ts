@@ -55,16 +55,3 @@ export async function fetchRatesJPY(force?: false): Promise<Rates> {
   return normalized;
 }
 
-export function convertToJPY(
-  amount: number,
-  from: Currency,
-  rates: Rates
-): number {
-  if (!Number.isFinite(amount)) return NaN;
-  if (from === "JPY") return amount;
-
-  const r = rates.rates[from];
-  if (!Number.isFinite(r) || r === 0) return NaN;
-
-  return amount / r;
-}

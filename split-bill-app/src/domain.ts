@@ -35,12 +35,65 @@ export const PEOPLE_OPTIONS: Person[] = [
   { id: 7, name: "山川" },
 ];
 
-// ① フォーマッター（小数0桁）
+// 通貨別の金額情報
+export type CurrencyAmount = {
+  currency: Currency;
+  amount: number;
+};
+
+// 残高情報
+export type Balance = {
+  person: Person;
+  paid: number;      // 支払った総額（JPY）
+  owed: number;      // 負担すべき総額（JPY）
+  balance: number;   // 残高（支払い - 負担）
+  paidByCurrency: CurrencyAmount[];  // 通貨別支払い額
+  owedByCurrency: CurrencyAmount[];  // 通貨別負担額
+};
+
+// 精算取引
+export type Settlement = {
+  from: Person;      // 支払う人
+  to: Person;        // 受け取る人
+  amount: number;    // 金額（JPY）
+};
+
+
+// 通貨フォーマッター
 export const fmtJPY = new Intl.NumberFormat("ja-JP", {
   style: "currency",
   currency: "JPY",
   maximumFractionDigits: 0,
   minimumFractionDigits: 0,
 });
+
+export const fmtUSD = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+export const fmtEUR = new Intl.NumberFormat("de-DE", {
+  style: "currency",
+  currency: "EUR",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+export const fmtRON = new Intl.NumberFormat("ro-RO", {
+  style: "currency",
+  currency: "RON",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+});
+
+// 通貨フォーマッターのマップ
+export const currencyFormatters: Record<Currency, Intl.NumberFormat> = {
+  JPY: fmtJPY,
+  USD: fmtUSD,
+  EUR: fmtEUR,
+  RON: fmtRON,
+};
 
 
